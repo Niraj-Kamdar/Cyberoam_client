@@ -4,7 +4,7 @@ This is an windows app which automatically connects to the Cyberoam network and 
 ## upcoming features
 - ~~StudentID and password change from tray~~
 - ~~strong encryption for password~~
-- remove automatic wifi connection 
+- ~~remove automatic wifi connection ~~
 - ~~remove unnecessary functions from tray~~ 
 - ~~uses qt instead of win32gui~~
 - timeout feature to avoid 1 minute wait
