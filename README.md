@@ -1,3 +1,3 @@
 # Cyberoam_client
-This is an windows app which automatically connects to the Cyberoam network and also handle timeout set by admin.So, you only have to start it once. Download latest exe file from [here](https://github.com/Niraj-Kamdar/Cyberoam_client/releases/download/v1.2/cyberoam_installer.exe)
+This is an windows app which automatically connects to the Cyberoam network and also handle timeout set by admin.So, you only have to start it once. Download latest exe file from [here](https://github.com/Niraj-Kamdar/Cyberoam_client/releases/download/v1.1/cyberoam_installer.exe)
 
