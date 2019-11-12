@@ -1,2 +1,2 @@
 echo starting application
-cyberoam.exe
+python systemTray.py
