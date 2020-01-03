@@ -11,7 +11,7 @@ from random import randint
 from time import perf_counter, sleep
 
 from cryptography.fernet import Fernet
-from PyQt5.QtCore import QThread, QCoreApplication
+from PyQt5.QtCore import QThread, QCoreApplication, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QApplication,
@@ -53,9 +53,11 @@ def write_hidden(data):
 
 
 class CyberThread(QThread):
+    fsignal = pyqtSignal(str)
     def __init__(self, parent=None):
         QThread.__init__(self, parent)
         self.loop = True
+        self.pause = False # pause loop
         with open("cyberoam.log", "w"):
             pass
         self.logger = logging.getLogger("cyberoam")
@@ -81,14 +83,19 @@ class CyberThread(QThread):
     def run(self):
 
         while self.loop:
+            while not self.pause:
+                try:
+                    with open("data.json", "r") as self.fobj:
+                        data = json.load(self.fobj)
+                        key = data["Build_data"]
+                        fnet = Fernet(key)
+                        self.studid = fnet.decrypt(data.get("STUDENTID").encode()).decode()
+                        self.passwd = fnet.decrypt(data.get("PASSKEY").encode()).decode()
+                        self.pause = True
+                except Exception:
+                    self.fsignal.emit("give credentials")
+                    sleep(1)
             try:
-                with open("data.json", "r") as self.fobj:
-                    data = json.load(self.fobj)
-                    key = data["Build_data"]
-                    fnet = Fernet(key)
-                    self.studid = fnet.decrypt(data.get("STUDENTID").encode()).decode()
-                    self.passwd = fnet.decrypt(data.get("PASSKEY").encode()).decode()
-                
                 self.driver = PhantomJS(r"./bin/phantomjs.exe")
                 wait = WebDriverWait(self.driver, timeout=10)
                 if not self.login_cyberoam():
@@ -237,6 +244,7 @@ class SetPass(QDialog):
 class SystemTrayIcon(QSystemTrayIcon):
     def __init__(self, icon, parent=None):
         QSystemTrayIcon.__init__(self, icon, parent)
+        
         self.studid = ""
         self.passwd = ""
         menu = QMenu(parent)
@@ -247,6 +255,7 @@ class SystemTrayIcon(QSystemTrayIcon):
         credential.triggered.connect(self.set_pass_dialog.show)
         self.setContextMenu(menu)
         self.main_thread = CyberThread()
+        self.main_thread.fsignal.connect(self.set_pass_dialog.show)
         self.main_thread.start()
 
     def exitapp(self):
