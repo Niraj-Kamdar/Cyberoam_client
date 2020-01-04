@@ -5,31 +5,19 @@ import logging
 import os
 import subprocess
 import sys
-import threading
-import urllib.request
+import urllib.parse as up
+import urllib.request as ur
 from random import randint
-from time import perf_counter, sleep
+from time import perf_counter, sleep, time
+from xml.dom.minidom import parseString
 
 from cryptography.fernet import Fernet
-from PyQt5.QtCore import QThread, QCoreApplication, pyqtSignal
+from PyQt5.QtCore import QCoreApplication, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (
-    QApplication,
-    QDialog,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMenu,
-    QPushButton,
-    QSizePolicy,
-    QSystemTrayIcon,
-    QVBoxLayout,
-    QWidget,
-)
-from selenium.webdriver import PhantomJS
-from selenium.webdriver.support.wait import WebDriverWait
+from PyQt5.QtWidgets import (QApplication, QDialog, QGridLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QLineEdit, QMenu,
+                             QPushButton, QSizePolicy, QSystemTrayIcon,
+                             QVBoxLayout, QWidget)
 
 
 def write_hidden(data):
@@ -96,8 +84,6 @@ class CyberThread(QThread):
                     self.fsignal.emit("give credentials")
                     sleep(1)
             try:
-                self.driver = PhantomJS(r"./bin/phantomjs.exe")
-                wait = WebDriverWait(self.driver, timeout=10)
                 if not self.login_cyberoam():
                     continue
                 i = 0
@@ -116,10 +102,6 @@ class CyberThread(QThread):
                 self.logger.warning(
                     "def connect_cyberoam: while run: closing driver cause internet not working."
                 )
-                self.login.click()
-                self.driver.quit()
-                self.driver = None
-                continue
             except Exception as e:
                 self.logger.exception(
                     "def connect_cyberoam: while run: except: {}".format(e)
@@ -130,63 +112,76 @@ class CyberThread(QThread):
                     "def connect_cyberoam: finally: terminating driver session"
                 )
                 try:
-                    if self.driver is not None:
-                        if self.login is not None:
-                            self.login.click()
-                        self.driver.quit()
-                    sleep(10)
+                    self.data =  {  "mode":"191",
+                                    "username":usr,
+                                    "password":self.passwd,
+                                    "a":(str)((int)(time() * 1000))}
+                    myfile = ur.urlopen("https://cyberoam.daiict.ac.in:8090/logout.xml", 
+                                        up.urlencode(self.data).encode("utf-8"),
+                                        timeout=3)
+                    data = myfile.read()
+                    myfile.close()
+                    dom = parseString(data)
+                    xmlTag = dom.getElementsByTagName('message')[0].toxml()
+                    message = xmlTag.replace('<message>', '').replace('</message>', '').replace('<message/>', '')
+                    xmlTag = dom.getElementsByTagName('status')[0].toxml()
+                    status = xmlTag.replace('<status>', '').replace('</status>', '')
+                    self.logger.warning(
+                        "def finally: {}".format(message)
+                    )
                 except Exception as e:
                     self.logger.exception(e)
                 self.logger.warning("end: driver session terminated successfully")
 
     def internet_on(self):
         try:
-            urllib.request.urlopen("http://172.217.163.78", timeout=1)  # google.com
+            ur.urlopen("http://172.217.163.78", timeout=1)  # google.com
             return True
         except Exception:
             try:
-                urllib.request.urlopen(
+                ur.urlopen(
                     "http://172.217.166.174", timeout=1
                 )  # google.com
                 return True
             except Exception:
                 try:
-                    urllib.request.urlopen("http://google.com", timeout=2)
+                    ur.urlopen("http://google.com", timeout=2)
                     return True
                 except Exception:
                     try:
-                        urllib.request.urlopen("http://wikipedia.org", timeout=2)
+                        ur.urlopen("http://wikipedia.org", timeout=2)
                         return True
                     except Exception:
                         return False
 
     def login_cyberoam(self):
         d = ("०१२३४५६७८९", "૦૧૨૩૪૫૬૭૮૯", "0123456789")
-        self.driver.get("http://cyberoam.daiict.ac.in:8090")
-
-        usern = self.driver.find_element_by_name("username")
-        passw = self.driver.find_element_by_name("password")
         lis = [randint(0, 2) for i in range(9)]
         usr = ""
         for i in range(9):
             usr += d[lis[i]][int(self.studid[i])]
-        usern.send_keys(usr)
-        passw.send_keys(self.passwd)
-        self.login = self.driver.find_element(by="id", value="loginbutton")
-        self.login.click()
-        status = self.driver.find_element(by="id", value="statusmessage")
-        status = status.get_attribute("innerHTML")
-        if status == "Login failed. You have reached the maximum login limit.":
+        self.data =  {  "mode":"191",
+                        "username":usr,
+                        "password":self.passwd,
+                        "a":(str)((int)(time() * 1000))}
+        myfile = ur.urlopen("https://cyberoam.daiict.ac.in:8090/login.xml", 
+                            up.urlencode(self.data).encode("utf-8"),
+                            timeout=3)
+        data = myfile.read()
+        myfile.close()
+        dom = parseString(data)
+        xmlTag = dom.getElementsByTagName('message')[0].toxml()
+        message = xmlTag.replace('<message>', '').replace('</message>', '').replace('<message/>', '')
+        xmlTag = dom.getElementsByTagName('status')[0].toxml()
+        status = xmlTag.replace('<status>', '').replace('</status>', '')
+        
+        if status.lower() != 'live':
             self.logger.warning(
-                "def login_cyberoam: Login failed. You have reached the maximum login limit."
+                "def login_cyberoam: {}".format(message)
             )
-            self.driver.quit()
             return False
         else:
-            sleep(1)
-            status = self.driver.find_element(by="id", value="signin-caption")
-            status = status.get_attribute("innerHTML")
-            self.logger.warning("def login_cyberoam: successfully login to cyberoam.")
+            self.logger.warning("def login_cyberoam: {}".format(message))
             return True
 
 
