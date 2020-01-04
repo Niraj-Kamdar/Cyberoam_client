@@ -3,6 +3,7 @@ import ctypes
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import urllib.parse as up
@@ -107,32 +108,6 @@ class CyberThread(QThread):
                     "def connect_cyberoam: while run: except: {}".format(e)
                 )
 
-            finally:
-                self.logger.warning(
-                    "def connect_cyberoam: finally: terminating driver session"
-                )
-                try:
-                    self.data =  {  "mode":"191",
-                                    "username":usr,
-                                    "password":self.passwd,
-                                    "a":(str)((int)(time() * 1000))}
-                    myfile = ur.urlopen("https://cyberoam.daiict.ac.in:8090/logout.xml", 
-                                        up.urlencode(self.data).encode("utf-8"),
-                                        timeout=3)
-                    data = myfile.read()
-                    myfile.close()
-                    dom = parseString(data)
-                    xmlTag = dom.getElementsByTagName('message')[0].toxml()
-                    message = xmlTag.replace('<message>', '').replace('</message>', '').replace('<message/>', '')
-                    xmlTag = dom.getElementsByTagName('status')[0].toxml()
-                    status = xmlTag.replace('<status>', '').replace('</status>', '')
-                    self.logger.warning(
-                        "def finally: {}".format(message)
-                    )
-                except Exception as e:
-                    self.logger.exception(e)
-                self.logger.warning("end: driver session terminated successfully")
-
     def internet_on(self):
         try:
             ur.urlopen("http://172.217.163.78", timeout=1)  # google.com
@@ -161,9 +136,10 @@ class CyberThread(QThread):
         for i in range(9):
             usr += d[lis[i]][int(self.studid[i])]
         self.data =  {  "mode":"191",
-                        "username":usr,
+                        "username": usr,
                         "password":self.passwd,
-                        "a":(str)((int)(time() * 1000))}
+                        "a":(str)((int)(time() * 1000)),
+                        "producttype": "0"}
         myfile = ur.urlopen("https://cyberoam.daiict.ac.in:8090/login.xml", 
                             up.urlencode(self.data).encode("utf-8"),
                             timeout=3)
@@ -171,18 +147,17 @@ class CyberThread(QThread):
         myfile.close()
         dom = parseString(data)
         xmlTag = dom.getElementsByTagName('message')[0].toxml()
-        message = xmlTag.replace('<message>', '').replace('</message>', '').replace('<message/>', '')
+        message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
         xmlTag = dom.getElementsByTagName('status')[0].toxml()
-        status = xmlTag.replace('<status>', '').replace('</status>', '')
-        
-        if status.lower() != 'live':
+        status = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+        if 'live' in status.lower():
             self.logger.warning(
-                "def login_cyberoam: {}".format(message)
+                "def login_cyberoam: {}".format(message.format(username=self.studid))
             )
-            return False
+            return True
         else:
             self.logger.warning("def login_cyberoam: {}".format(message))
-            return True
+            return False
 
 
 
