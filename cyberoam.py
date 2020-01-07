@@ -46,8 +46,6 @@ class CyberThread(QThread):
         try:
             with open("cyberoam.log", "r"):
                 pass
-            with open("cyberoam.log", "w"):
-                pass
         except FileNotFoundError:
             write_hidden(None, "cyberoam.log")
             
