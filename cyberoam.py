@@ -21,20 +21,16 @@ from PyQt5.QtWidgets import (QApplication, QDialog, QGridLayout, QGroupBox,
                              QVBoxLayout, QWidget)
 
 
-def write_hidden(data):
+def write_hidden(data, file_name):
 
     HIDDEN = 0x02
-    file_name = "data.json"
 
     prefix = "." if os.name != "nt" else ""
     file_name = prefix + file_name
-    try:
-        with open(file_name, "w") as f:
+    with open(file_name, "w") as f:
+        if data:
             json.dump(data, f)
-    except Exception:
-        os.remove(file_name)
-        with open(file_name, "w") as f:
-            json.dump(data, f)
+
     if os.name == "nt":
         ret = ctypes.windll.kernel32.SetFileAttributesW(file_name, HIDDEN)
         if not ret:
@@ -47,13 +43,17 @@ class CyberThread(QThread):
         QThread.__init__(self, parent)
         self.loop = True
         self.pause = False # pause loop
-        with open("cyberoam.log", "w"):
-            pass
+        try:
+            with open("cyberoam.log", "r"):
+                pass
+            with open("cyberoam.log", "w"):
+                pass
+        except FileNotFoundError:
+            write_hidden(None, "cyberoam.log")
+            
         self.logger = logging.getLogger("cyberoam")
         c_handler = logging.StreamHandler()
         f_handler = logging.FileHandler("cyberoam.log")
-        # c_handler.setLevel(logging.WARNING)
-        # f_handler.setLevel(logging.WARNING)
 
         c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
         f_format = logging.Formatter(
@@ -64,8 +64,6 @@ class CyberThread(QThread):
 
         self.logger.addHandler(c_handler)
         self.logger.addHandler(f_handler)
-        self.driver = None
-        self.login = None
         self.logger.warning("############### NEW SESSION ###############")
 
 
@@ -76,88 +74,95 @@ class CyberThread(QThread):
                 try:
                     with open("data.json", "r") as self.fobj:
                         data = json.load(self.fobj)
-                        key = data["Build_data"]
+                        key = data.get("Build_data")
                         fnet = Fernet(key)
                         self.studid = fnet.decrypt(data.get("STUDENTID").encode()).decode()
                         self.passwd = fnet.decrypt(data.get("PASSKEY").encode()).decode()
+                        self.url = data.get("url")
                         self.pause = True
-                except Exception:
+                        self.login()
+                except FileNotFoundError:
                     self.fsignal.emit("give credentials")
                     sleep(1)
-            try:
-                if not self.login_cyberoam():
-                    continue
-                i = 0
-                while self.internet_on() and self.loop:
-                    self.logger.warning(
-                        "def connect_cyberoam: while internet_on(): internet working for {} units.".format(
-                            i
-                        )
-                    )
-                    i += 1
-                    if i > 210:
-                        if not self.login_cyberoam():
-                            continue
-                        i = 0
-                    sleep(30)
-                self.logger.warning(
-                    "def connect_cyberoam: while run: closing driver cause internet not working."
-                )
-            except Exception as e:
-                self.logger.exception(
-                    "def connect_cyberoam: while run: except: {}".format(e)
-                )
+            self.relogin()
+            sleep(5)
+        self.logout()
 
-    def internet_on(self):
+    def relogin(self):
+        data = {"mode":"192",
+                "username":self.studid,
+                "a":(str)((int)(time() * 1000))}
         try:
-            ur.urlopen("http://172.217.163.78", timeout=1)  # google.com
-            return True
-        except Exception:
-            try:
-                ur.urlopen(
-                    "http://172.217.166.174", timeout=1
-                )  # google.com
-                return True
-            except Exception:
-                try:
-                    ur.urlopen("http://google.com", timeout=2)
-                    return True
-                except Exception:
-                    try:
-                        ur.urlopen("http://wikipedia.org", timeout=2)
-                        return True
-                    except Exception:
-                        return False
+            self.logger.warning("Sending ack request...")
+            myfile = ur.urlopen(self.url + "live?" + up.urlencode(data), timeout=3)
+            data = myfile.read()
+            myfile.close()
+            dom = parseString(data)
+            xmlTag = dom.getElementsByTagName('ack')[0].toxml()
+            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            if 'ack' in message:
+                self.logger.warning("You are logged in")
+            else:
+                self.logger.error("Error: Server response not recognized: " + message)
+                self.logout()
+                self.login()
+        except Exception as e:
+            self.logger.error("Error: {}".format(e))
+            self.logout()
+            self.login()
+            return
 
-    def login_cyberoam(self):
+                
+    def logout(self):
+        data = {"mode":"193",
+                "username":self.studid,
+                "a":(str)((int)(time() * 1000))}
+
+        try:
+            self.logger.warning("Sending logout request...")
+            myfile = ur.urlopen(self.url + "logout.xml", up.urlencode(data).encode("utf-8"), timeout=3)
+            data = myfile.read()
+            myfile.close()
+            dom = parseString(data)
+            xmlTag = dom.getElementsByTagName('message')[0].toxml()
+            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            self.logger.warning(message)
+        except Exception as e:
+            self.logger.error("Error: {}".format(e))
+
+
+    def login(self):
         d = ("०१२३४५६७८९", "૦૧૨૩૪૫૬૭૮૯", "0123456789")
-        lis = [randint(0, 2) for i in range(9)]
-        usr = ""
-        for i in range(9):
-            usr += d[lis[i]][int(self.studid[i])]
-        self.data =  {  "mode":"191",
-                        "username": usr,
-                        "password":self.passwd,
-                        "a":(str)((int)(time() * 1000)),
-                        "producttype": "0"}
-        myfile = ur.urlopen("https://cyberoam.daiict.ac.in:8090/login.xml", 
-                            up.urlencode(self.data).encode("utf-8"),
-                            timeout=3)
-        data = myfile.read()
-        myfile.close()
-        dom = parseString(data)
-        xmlTag = dom.getElementsByTagName('message')[0].toxml()
-        message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
-        xmlTag = dom.getElementsByTagName('status')[0].toxml()
-        status = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
-        if 'live' in status.lower():
-            self.logger.warning(
-                "def login_cyberoam: {}".format(message.format(username=self.studid))
-            )
-            return True
-        else:
-            self.logger.warning("def login_cyberoam: {}".format(message))
+        user = self.studid
+        self.studid = ''.join(map(lambda x: d[randint(0, 2)][int(x)], self.studid))
+        data =  {   "mode":"191",
+                    "username": self.studid,
+                    "password":self.passwd,
+                    "a":(str)((int)(time() * 1000))}
+        try:
+            myfile = ur.urlopen(self.url + "login.xml", 
+                                up.urlencode(data).encode("utf-8"),
+                                timeout=3)
+            data = myfile.read()
+            myfile.close()
+            dom = parseString(data)
+            xmlTag = dom.getElementsByTagName('message')[0].toxml()
+            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            xmlTag = dom.getElementsByTagName('status')[0].toxml()
+            status = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            if 'live' in status.lower():
+                self.logger.warning(
+                    "Login: {}".format(message.format(username=user))
+                )
+                return True
+            else:
+                self.logger.error("Error: {}".format(message))
+                return False
+        except Exception as e:
+            self.logger.error("Error {}".format(e))
             return False
+            
+
 
 
 
@@ -184,7 +189,8 @@ class SetPass(QDialog):
         d["Build_data"] = key.decode()
         d["STUDENTID"] = f.encrypt(self.UserName.text().encode()).decode()
         d["PASSKEY"] = f.encrypt(self.Password.text().encode()).decode()
-        write_hidden(d)
+        d["url"] = "https://cyberoam.daiict.ac.in:8090/"
+        write_hidden(d, "data.json")
         self.hide()
 
     def initUI(self):
