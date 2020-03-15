@@ -7,19 +7,22 @@ import sys
 from time import sleep, time
 from xml.dom.minidom import parseString
 
+from PyQt5 import uic
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QApplication, QDialog, QGridLayout, QGroupBox,
-                             QLabel, QLineEdit, QMenu,
-                             QPushButton, QSizePolicy, QSystemTrayIcon,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QApplication, QMenu,
+                             QSystemTrayIcon,
+                             QWidget)
 from cryptography.fernet import Fernet
 from requests import Session
+
+form_1, base_1 = uic.loadUiType('assets/dialog.ui')
 
 
 def write_hidden(data, file_name):
     HIDDEN = 0x02
-
+    if os.path.isfile(file_name):
+        os.remove(file_name)
     prefix = "." if os.name != "nt" else ""
     file_name = prefix + file_name
     with open(file_name, "w") as f:
@@ -136,7 +139,7 @@ class CyberThread(QThread):
             status = re.search(r"\[[A-Z a-z{}.]*\]", xmlTag).group(0)
             if 'live' in status.lower():
                 self.logger.warning(
-                        "Login: {}".format(message.format(username=user))
+                        "Login: {}".format(message.format(username=self.studid))
                 )
                 return True
             else:
@@ -147,55 +150,26 @@ class CyberThread(QThread):
             return False
 
 
-class SetPass(QDialog):
+class SetPass(base_1, form_1):
     def __init__(self):
-        super().__init__()
-        self.title = "set user credentials"
-        self.left = 10
-        self.top = 45
-        self.width = 320
-        self.height = 100
-        self.submitButton = QPushButton("submit")
-        self.submitButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self.submitButton.clicked.connect(self.handleSubmit)
-        self.UserName = QLineEdit(self)
-        self.Password = QLineEdit(self)
-        self.Password.setEchoMode(QLineEdit.Password)
-        self.initUI()
+        super(base_1, self).__init__()
+        self.setupUi(self)
+        self.submit.accepted.connect(self.handleSubmit)
+        self.submit.rejected.connect(self.hide)
 
     def handleSubmit(self):
         key = Fernet.generate_key()
         f = Fernet(key)
-        d = {}
+        d = dict()
         d["Build_data"] = key.decode()
-        d["STUDENTID"] = f.encrypt(self.UserName.text().encode()).decode()
-        d["PASSKEY"] = f.encrypt(self.Password.text().encode()).decode()
-        d["url"] = "https://cyberoam.daiict.ac.in:8090/"
-        write_hidden(d, "data.json")
-        self.hide()
-
-    def initUI(self):
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-
-        self.createGridLayout()
-
-        windowLayout = QVBoxLayout()
-        windowLayout.addWidget(self.horizontalGroupBox)
-        windowLayout.addWidget(self.submitButton)
-        self.setLayout(windowLayout)
-
-    def createGridLayout(self):
-        self.horizontalGroupBox = QGroupBox("Grid")
-        layout = QGridLayout()
-
-        layout.addWidget(QLabel("Username"), 0, 0)
-        layout.addWidget(self.UserName, 0, 1)
-
-        layout.addWidget(QLabel("Password"), 1, 0)
-        layout.addWidget(self.Password, 1, 1)
-
-        self.horizontalGroupBox.setLayout(layout)
+        d["STUDENTID"] = f.encrypt(self.useredit.text().encode()).decode()
+        d["PASSKEY"] = f.encrypt(self.passedit.text().encode()).decode()
+        d["url"] = self.urledit.text()
+        d["startup"] = self.startup.isChecked()
+        try:
+            write_hidden(d, "data.json")
+        except Exception as e:
+            print(e)
 
 
 class SystemTrayIcon(QSystemTrayIcon):
