@@ -1,30 +1,28 @@
-import base64
 import ctypes
 import json
 import logging
 import os
 import re
-import subprocess
 import sys
-import urllib.parse as up
-import urllib.request as ur
-from random import randint
-from time import perf_counter, sleep, time
+from time import sleep, time
 from xml.dom.minidom import parseString
 
-from cryptography.fernet import Fernet
-from PyQt5.QtCore import QCoreApplication, QThread, pyqtSignal
+from PyQt5 import uic
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import (QApplication, QDialog, QGridLayout, QGroupBox,
-                             QHBoxLayout, QLabel, QLineEdit, QMenu,
-                             QPushButton, QSizePolicy, QSystemTrayIcon,
-                             QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QApplication, QMenu,
+                             QSystemTrayIcon,
+                             QWidget)
+from cryptography.fernet import Fernet
+from requests import Session
+
+form_1, base_1 = uic.loadUiType('assets/dialog.ui')
 
 
 def write_hidden(data, file_name):
-
     HIDDEN = 0x02
-
+    if os.path.isfile(file_name):
+        os.remove(file_name)
     prefix = "." if os.name != "nt" else ""
     file_name = prefix + file_name
     with open(file_name, "w") as f:
@@ -39,23 +37,24 @@ def write_hidden(data, file_name):
 
 class CyberThread(QThread):
     fsignal = pyqtSignal(str)
+
     def __init__(self, parent=None):
         QThread.__init__(self, parent)
         self.loop = True
-        self.pause = False # pause loop
+        self.pause = False  # pause loop
         try:
             with open("cyberoam.log", "r"):
                 pass
         except FileNotFoundError:
             write_hidden(None, "cyberoam.log")
-            
+
         self.logger = logging.getLogger("cyberoam")
         c_handler = logging.StreamHandler()
         f_handler = logging.FileHandler("cyberoam.log")
 
         c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
         f_format = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         c_handler.setFormatter(c_format)
         f_handler.setFormatter(f_format)
@@ -63,7 +62,7 @@ class CyberThread(QThread):
         self.logger.addHandler(c_handler)
         self.logger.addHandler(f_handler)
         self.logger.warning("############### NEW SESSION ###############")
-
+        self.browser = Session()
 
     def run(self):
 
@@ -86,18 +85,18 @@ class CyberThread(QThread):
             sleep(5)
         self.logout()
 
+    # noinspection SpellCheckingInspection
     def relogin(self):
-        data = {"mode":"192",
-                "username":self.studid,
-                "a":(str)((int)(time() * 1000))}
+        data = {"mode": "192",
+                "username": self.studid,
+                "a": str(int(time() * 1000))}
         try:
             self.logger.warning("Sending ack request...")
-            myfile = ur.urlopen(self.url + "live?" + up.urlencode(data), timeout=3)
-            data = myfile.read()
-            myfile.close()
+            response = self.browser.get(f"{self.url}live", params=data)
+            data = response.content
             dom = parseString(data)
             xmlTag = dom.getElementsByTagName('ack')[0].toxml()
-            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            message = re.search(r"\[[A-Z a-z{}.]*\]", xmlTag).group(0)
             if 'ack' in message:
                 self.logger.warning("You are logged in")
             else:
@@ -110,47 +109,37 @@ class CyberThread(QThread):
             self.login()
             return
 
-                
     def logout(self):
-        data = {"mode":"193",
-                "username":self.studid,
-                "a":(str)((int)(time() * 1000))}
-
+        data = {"mode": "193",
+                "username": self.studid,
+                "a": str(int(time() * 1000))}
         try:
             self.logger.warning("Sending logout request...")
-            myfile = ur.urlopen(self.url + "logout.xml", up.urlencode(data).encode("utf-8"), timeout=3)
-            data = myfile.read()
-            myfile.close()
+            response = self.browser.post(f"{self.url}logout.xml", data=data)
+            data = response.content
             dom = parseString(data)
             xmlTag = dom.getElementsByTagName('message')[0].toxml()
-            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            message = re.search(r"\[[A-Z a-z.&#39;]*\]", xmlTag).group(0)
             self.logger.warning(message)
         except Exception as e:
             self.logger.error("Error: {}".format(e))
 
-
     def login(self):
-        d = ("०१२३४५६७८९", "૦૧૨૩૪૫૬૭૮૯", "0123456789")
-        user = self.studid
-        self.studid = ''.join(map(lambda x: d[randint(0, 2)][int(x)], self.studid))
-        data =  {   "mode":"191",
-                    "username": self.studid,
-                    "password":self.passwd,
-                    "a":(str)((int)(time() * 1000))}
+        data = {"mode": "191",
+                "username": self.studid,
+                "password": self.passwd,
+                "a": str(int(time() * 1000))}
         try:
-            myfile = ur.urlopen(self.url + "login.xml", 
-                                up.urlencode(data).encode("utf-8"),
-                                timeout=3)
-            data = myfile.read()
-            myfile.close()
+            response = self.browser.post(f"{self.url}login.xml", data=data)
+            data = response.content
             dom = parseString(data)
             xmlTag = dom.getElementsByTagName('message')[0].toxml()
-            message = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            message = re.search(r"\[[A-Z a-z{}.]*\]", xmlTag).group(0)
             xmlTag = dom.getElementsByTagName('status')[0].toxml()
-            status = re.search("\[[A-Z a-z{}.]*\]", xmlTag).group(0)
+            status = re.search(r"\[[A-Z a-z{}.]*\]", xmlTag).group(0)
             if 'live' in status.lower():
                 self.logger.warning(
-                    "Login: {}".format(message.format(username=user))
+                        "Login: {}".format(message.format(username=self.studid))
                 )
                 return True
             else:
@@ -159,66 +148,34 @@ class CyberThread(QThread):
         except Exception as e:
             self.logger.error("Error {}".format(e))
             return False
-            
 
 
-
-
-class SetPass(QDialog):
+class SetPass(base_1, form_1):
     def __init__(self):
-        super().__init__()
-        self.title = "set user credentials"
-        self.left = 10
-        self.top = 45
-        self.width = 320
-        self.height = 100
-        self.submitButton = QPushButton("submit")
-        self.submitButton.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self.submitButton.clicked.connect(self.handleSubmit)
-        self.UserName = QLineEdit(self)
-        self.Password = QLineEdit(self)
-        self.Password.setEchoMode(QLineEdit.Password)
-        self.initUI()
+        super(base_1, self).__init__()
+        self.setupUi(self)
+        self.submit.accepted.connect(self.handleSubmit)
+        self.submit.rejected.connect(self.hide)
 
     def handleSubmit(self):
         key = Fernet.generate_key()
         f = Fernet(key)
-        d = {}
+        d = dict()
         d["Build_data"] = key.decode()
-        d["STUDENTID"] = f.encrypt(self.UserName.text().encode()).decode()
-        d["PASSKEY"] = f.encrypt(self.Password.text().encode()).decode()
-        d["url"] = "https://cyberoam.daiict.ac.in:8090/"
-        write_hidden(d, "data.json")
-        self.hide()
-
-    def initUI(self):
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-
-        self.createGridLayout()
-
-        windowLayout = QVBoxLayout()
-        windowLayout.addWidget(self.horizontalGroupBox)
-        windowLayout.addWidget(self.submitButton)
-        self.setLayout(windowLayout)
-
-    def createGridLayout(self):
-        self.horizontalGroupBox = QGroupBox("Grid")
-        layout = QGridLayout()
-
-        layout.addWidget(QLabel("Username"), 0, 0)
-        layout.addWidget(self.UserName, 0, 1)
-
-        layout.addWidget(QLabel("Password"), 1, 0)
-        layout.addWidget(self.Password, 1, 1)
-
-        self.horizontalGroupBox.setLayout(layout)
+        d["STUDENTID"] = f.encrypt(self.useredit.text().encode()).decode()
+        d["PASSKEY"] = f.encrypt(self.passedit.text().encode()).decode()
+        d["url"] = self.urledit.text()
+        d["startup"] = self.startup.isChecked()
+        try:
+            write_hidden(d, "data.json")
+        except Exception as e:
+            print(e)
 
 
 class SystemTrayIcon(QSystemTrayIcon):
     def __init__(self, icon, parent=None):
         QSystemTrayIcon.__init__(self, icon, parent)
-        
+
         self.studid = ""
         self.passwd = ""
         menu = QMenu(parent)
@@ -245,7 +202,6 @@ def main():
     trayIcon = SystemTrayIcon(QIcon("internet.ico"), w)
 
     trayIcon.show()
-        
 
     sys.exit(app.exec_())
 
