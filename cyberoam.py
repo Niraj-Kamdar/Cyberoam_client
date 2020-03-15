@@ -160,7 +160,7 @@ class SetPass(base_1, form_1):
     def handleSubmit(self):
         key = Fernet.generate_key()
         f = Fernet(key)
-        d = dict()
+        d = {}
         d["Build_data"] = key.decode()
         d["STUDENTID"] = f.encrypt(self.useredit.text().encode()).decode()
         d["PASSKEY"] = f.encrypt(self.passedit.text().encode()).decode()
